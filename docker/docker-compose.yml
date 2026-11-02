@@ -1,0 +1,43 @@
+services:
+  qdrant:
+    image: qdrant/qdrant:v1.12.4
+    container_name: parking-qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: parking-postgres
+    environment:
+      POSTGRES_DB: parking_db
+      POSTGRES_USER: parking_user
+      POSTGRES_PASSWORD: parking_pass
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  app:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: parking-app
+    env_file:
+      - ../.env
+    environment:
+      QDRANT_HOST: qdrant
+      QDRANT_PORT: 6333
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+    depends_on:
+      - qdrant
+      - postgres
+    ports:
+      - "8000:8000"
+
+volumes:
+  qdrant_data:
+  postgres_data:

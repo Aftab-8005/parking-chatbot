@@ -1,0 +1,12 @@
+[
+  {"question": "What is the address of the parking?", "expected_section": "Location"},
+  {"question": "Is the parking facility secure?", "expected_section": "Frequently Asked Questions", "expected_subsection": "Is the parking facility secure?"},
+  {"question": "How do I make a reservation?", "expected_section": "Booking Process"},
+  {"question": "What information do you need for booking?", "expected_section": "Frequently Asked Questions", "expected_subsection": "What information is required for a reservation?"},
+  {"question": "Can I reserve a parking space through the chatbot?", "expected_section": "Frequently Asked Questions", "expected_subsection": "Can I reserve a parking space through the chatbot?"},
+  {"question": "Is a reservation confirmed right away?", "expected_section": "Frequently Asked Questions", "expected_subsection": "Is a reservation immediately confirmed?"},
+  {"question": "What are the rules about reservation start and end times?", "expected_section": "Reservation Rules"},
+  {"question": "What kind of vehicles can park here?", "expected_section": "Parking Spaces"},
+  {"question": "Tell me about the general parking facility.", "expected_section": "General Information"},
+  {"question": "Where is City Center Parking located relative to downtown?", "expected_section": "Location"}
+]
