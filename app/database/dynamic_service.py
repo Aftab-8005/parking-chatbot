@@ -64,3 +64,59 @@ def create_reservation(
         return reservation.id
     finally:
         session.close()
+
+
+def get_reservation(reservation_id: int) -> dict | None:
+    session = get_session()
+    try:
+        row = session.get(Reservation, reservation_id)
+        if row is None:
+            return None
+        return _reservation_to_dict(row)
+    finally:
+        session.close()
+
+
+def list_pending_reservations() -> list[dict]:
+    session = get_session()
+    try:
+        rows = (
+            session.query(Reservation)
+            .filter(Reservation.status == "pending_admin_approval")
+            .order_by(Reservation.created_at.asc())
+            .all()
+        )
+        return [_reservation_to_dict(row) for row in rows]
+    finally:
+        session.close()
+
+
+def update_reservation_status(
+    reservation_id: int, status: str, decided_at: datetime | None = None
+) -> dict | None:
+    session = get_session()
+    try:
+        row = session.get(Reservation, reservation_id)
+        if row is None:
+            return None
+        row.status = status
+        if decided_at is not None:
+            row.decided_at = decided_at
+        session.commit()
+        return _reservation_to_dict(row)
+    finally:
+        session.close()
+
+
+def _reservation_to_dict(row: Reservation) -> dict:
+    return {
+        "id": row.id,
+        "first_name": row.first_name,
+        "last_name": row.last_name,
+        "car_number": row.car_number,
+        "start_time": row.start_time,
+        "end_time": row.end_time,
+        "status": row.status,
+        "created_at": row.created_at,
+        "decided_at": row.decided_at,
+    }

@@ -26,6 +26,13 @@ class Settings(BaseSettings):
 
     admin_email: str = ""
 
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = "parking-bot@example.com"
+    smtp_use_tls: bool = True
+
     @property
     def postgres_url(self) -> str:
         return (

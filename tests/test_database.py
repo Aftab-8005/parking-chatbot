@@ -51,3 +51,76 @@ def test_create_reservation_adds_and_commits_session(monkeypatch):
 
     session.add.assert_called_once()
     session.commit.assert_called_once()
+
+
+def test_get_reservation_returns_none_when_missing(monkeypatch):
+    session = MagicMock()
+    session.get.return_value = None
+    monkeypatch.setattr(dynamic_service, "get_session", lambda: session)
+
+    assert dynamic_service.get_reservation(123) is None
+
+
+def test_get_reservation_returns_dict_from_row(monkeypatch):
+    row = MagicMock(
+        id=5,
+        first_name="Jane",
+        last_name="Doe",
+        car_number="AB-1234",
+        start_time=datetime(2026, 11, 5, 9, 0),
+        end_time=datetime(2026, 11, 5, 17, 0),
+        status="pending_admin_approval",
+        created_at=datetime(2026, 11, 1, 8, 0),
+        decided_at=None,
+    )
+    session = MagicMock()
+    session.get.return_value = row
+    monkeypatch.setattr(dynamic_service, "get_session", lambda: session)
+
+    result = dynamic_service.get_reservation(5)
+    assert result["id"] == 5
+    assert result["status"] == "pending_admin_approval"
+
+
+def test_list_pending_reservations_filters_by_status(monkeypatch):
+    row = MagicMock(
+        id=5,
+        first_name="Jane",
+        last_name="Doe",
+        car_number="AB-1234",
+        start_time=datetime(2026, 11, 5, 9, 0),
+        end_time=datetime(2026, 11, 5, 17, 0),
+        status="pending_admin_approval",
+        created_at=datetime(2026, 11, 1, 8, 0),
+        decided_at=None,
+    )
+    session = MagicMock()
+    session.query.return_value.filter.return_value.order_by.return_value.all.return_value = [row]
+    monkeypatch.setattr(dynamic_service, "get_session", lambda: session)
+
+    result = dynamic_service.list_pending_reservations()
+    assert len(result) == 1
+    assert result[0]["status"] == "pending_admin_approval"
+
+
+def test_update_reservation_status_commits_new_status(monkeypatch):
+    row = MagicMock(status="pending_admin_approval", decided_at=None)
+    session = MagicMock()
+    session.get.return_value = row
+    monkeypatch.setattr(dynamic_service, "get_session", lambda: session)
+
+    decided_at = datetime(2026, 11, 2, 10, 0)
+    result = dynamic_service.update_reservation_status(5, "approved", decided_at=decided_at)
+
+    assert row.status == "approved"
+    assert row.decided_at == decided_at
+    session.commit.assert_called_once()
+    assert result["status"] == "approved"
+
+
+def test_update_reservation_status_returns_none_when_missing(monkeypatch):
+    session = MagicMock()
+    session.get.return_value = None
+    monkeypatch.setattr(dynamic_service, "get_session", lambda: session)
+
+    assert dynamic_service.update_reservation_status(999, "approved") is None
