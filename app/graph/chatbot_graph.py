@@ -1,9 +1,12 @@
 """LangGraph orchestration of the Stage-1 chatbot.
 
-START -> classify_intent -> {handle_reservation | handle_dynamic_info | handle_static_info} -> guardrail_filter -> END
+START -> classify_intent -> {handle_reservation | handle_reservation_status |
+handle_dynamic_info | handle_static_info} -> guardrail_filter -> END
 
 - classify_intent: routes each turn based on reservation-in-progress state and keywords.
 - handle_reservation: interactive slot-filling for a parking reservation (app.agents.reservation_agent).
+- handle_reservation_status: lets the user ask whether an admin has approved/rejected a
+  reservation (the feedback loop back from Stage 2/4 into this chatbot).
 - handle_dynamic_info: looks up availability / prices / working hours from PostgreSQL (app.database.dynamic_service).
 - handle_static_info: RAG over the Qdrant knowledge base (app.rag.chain).
 - guardrail_filter: redacts any PII that may have leaked into the final response before it reaches the user.
@@ -12,6 +15,7 @@ START -> classify_intent -> {handle_reservation | handle_dynamic_info | handle_s
 from __future__ import annotations
 
 import logging
+import re
 
 from langgraph.graph import END, START, StateGraph
 
@@ -30,6 +34,19 @@ _RESERVATION_KEYWORDS = ("reserve", "reservation", "book", "booking")
 _AVAILABILITY_KEYWORDS = ("available", "availability", "free space", "spaces left", "how many spaces")
 _PRICE_KEYWORDS = ("price", "cost", "fee", "how much")
 _HOURS_KEYWORDS = ("working hours", "opening", "closing", "open", "close", "hours")
+_STATUS_KEYWORDS = (
+    "status",
+    "approved",
+    "rejected",
+    "confirmed",
+    "decision",
+    "update on my",
+    "has my reservation",
+    "been approved",
+    "been rejected",
+)
+
+_RESERVATION_ID_RE = re.compile(r"#\s*(\d+)|\breservation\s*(?:number\s*)?(\d+)\b", re.IGNORECASE)
 
 logger = logging.getLogger("parking_chatbot.graph")
 
@@ -41,7 +58,9 @@ def classify_intent(state: ChatState) -> ChatState:
         state["intent"] = "reservation"
         return state
 
-    if any(keyword in message for keyword in _RESERVATION_KEYWORDS):
+    if any(keyword in message for keyword in _STATUS_KEYWORDS):
+        state["intent"] = "reservation_status"
+    elif any(keyword in message for keyword in _RESERVATION_KEYWORDS):
         state["intent"] = "reservation"
     elif any(keyword in message for keyword in _AVAILABILITY_KEYWORDS + _PRICE_KEYWORDS + _HOURS_KEYWORDS):
         state["intent"] = "dynamic_info"
@@ -88,10 +107,45 @@ def handle_reservation(state: ChatState) -> ChatState:
         state["response"] = summarize(slots) + f" (Reservation reference: #{reservation_id})"
         state["reservation_in_progress"] = False
         state["reservation_complete"] = True
+        state["reservation_id"] = reservation_id
+        state["last_reservation_id"] = reservation_id
     else:
         state["response"] = next_prompt(slots) or ""
 
     state["reservation_slots"] = slots.to_dict()
+    return state
+
+
+_STATUS_MESSAGES = {
+    "pending_admin_approval": "is still awaiting administrator approval.",
+    "approved": "has been approved by the administrator.",
+    "recorded": "has been approved and confirmed -- you're all set!",
+    "rejected": "was rejected by the administrator.",
+}
+
+
+def handle_reservation_status(state: ChatState) -> ChatState:
+    """Let the user ask the chatbot whether the administrator has
+    approved/rejected a reservation it already collected (Stage 2/4
+    feedback loop back to the user-facing chatbot)."""
+    message = state["user_message"]
+    match = _RESERVATION_ID_RE.search(message)
+    reservation_id = int(match.group(1) or match.group(2)) if match else state.get("last_reservation_id")
+
+    if reservation_id is None:
+        state["response"] = (
+            "Which reservation would you like me to check? Please give me the reference number "
+            "(e.g. #3), or make a new reservation first."
+        )
+        return state
+
+    reservation = dynamic_service.get_reservation(reservation_id)
+    if reservation is None:
+        state["response"] = f"I couldn't find a reservation with reference #{reservation_id}."
+        return state
+
+    status_text = _STATUS_MESSAGES.get(reservation["status"], f"has status '{reservation['status']}'.")
+    state["response"] = f"Reservation #{reservation_id} {status_text}"
     return state
 
 
@@ -147,7 +201,7 @@ def guardrail_filter(state: ChatState) -> ChatState:
     # censor that. Other intents still get full PII redaction since any name
     # appearing there would come from the knowledge base/dynamic data, not
     # from something the user just said.
-    redact_names = state["intent"] != "reservation"
+    redact_names = state["intent"] not in ("reservation", "reservation_status")
     state["response"] = redact_pii(state["response"], redact_names=redact_names)
     return state
 
@@ -157,6 +211,7 @@ def build_graph():
 
     graph.add_node("classify_intent", classify_intent)
     graph.add_node("handle_reservation", handle_reservation)
+    graph.add_node("handle_reservation_status", handle_reservation_status)
     graph.add_node("handle_dynamic_info", handle_dynamic_info)
     graph.add_node("handle_static_info", handle_static_info)
     graph.add_node("guardrail_filter", guardrail_filter)
@@ -167,11 +222,13 @@ def build_graph():
         route_after_classify,
         {
             "reservation": "handle_reservation",
+            "reservation_status": "handle_reservation_status",
             "dynamic_info": "handle_dynamic_info",
             "static_info": "handle_static_info",
         },
     )
     graph.add_edge("handle_reservation", "guardrail_filter")
+    graph.add_edge("handle_reservation_status", "guardrail_filter")
     graph.add_edge("handle_dynamic_info", "guardrail_filter")
     graph.add_edge("handle_static_info", "guardrail_filter")
     graph.add_edge("guardrail_filter", END)

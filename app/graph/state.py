@@ -8,6 +8,8 @@ class ChatState(TypedDict):
     reservation_in_progress: bool
     response: str
     reservation_complete: bool
+    reservation_id: Optional[int]
+    last_reservation_id: Optional[int]
 
 
 def new_state(user_message: str, previous: Optional[dict] = None) -> ChatState:
@@ -19,4 +21,6 @@ def new_state(user_message: str, previous: Optional[dict] = None) -> ChatState:
         reservation_in_progress=previous.get("reservation_in_progress", False),
         response="",
         reservation_complete=False,
+        reservation_id=None,
+        last_reservation_id=previous.get("last_reservation_id"),
     )
