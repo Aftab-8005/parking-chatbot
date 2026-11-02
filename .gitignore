@@ -34,6 +34,10 @@ htmlcov/
 qdrant_data/
 chroma_db/
 
+# MCP server output (Stage 3) -- generated at runtime, keep the directory tracked
+data/reservations/*.txt
+data/reservations/*.lock
+
 # Terraform
 terraform/.terraform/
 terraform/*.tfstate

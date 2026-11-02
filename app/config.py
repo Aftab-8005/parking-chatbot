@@ -23,6 +23,7 @@ class Settings(BaseSettings):
 
     mcp_host: str = "localhost"
     mcp_port: int = 8001
+    mcp_api_key: str = "dev-mcp-shared-secret"
 
     admin_email: str = ""
 
@@ -39,6 +40,10 @@ class Settings(BaseSettings):
             f"postgresql+psycopg2://{self.postgres_user}:{self.postgres_password}"
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         )
+
+    @property
+    def mcp_base_url(self) -> str:
+        return f"http://{self.mcp_host}:{self.mcp_port}"
 
 
 settings = Settings()

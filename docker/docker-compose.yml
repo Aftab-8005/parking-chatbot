@@ -20,6 +20,19 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+  mcp:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: parking-mcp
+    env_file:
+      - ../.env
+    command: ["uvicorn", "mcp_server.app:app", "--host", "0.0.0.0", "--port", "8001"]
+    volumes:
+      - ../data/reservations:/srv/app/data/reservations
+    ports:
+      - "8001:8001"
+
   app:
     build:
       context: ..
@@ -32,9 +45,12 @@ services:
       QDRANT_PORT: 6333
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
+      MCP_HOST: mcp
+      MCP_PORT: 8001
     depends_on:
       - qdrant
       - postgres
+      - mcp
     ports:
       - "8000:8000"
 
