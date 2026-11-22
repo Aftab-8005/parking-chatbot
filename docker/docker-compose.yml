@@ -20,6 +20,26 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+  mcp:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    # Named distinctly from any other local project's "parking-mcp" container
+    # to avoid a docker container-name collision.
+    container_name: parking-chatbot-mcp
+    command: ["python", "-m", "app.mcp.server"]
+    env_file:
+      - ../.env
+    environment:
+      MCP_HOST: 0.0.0.0
+      MCP_PORT: 8010
+    ports:
+      # Host port 8010 (not 8001): 8001 is occupied on this machine by an
+      # unrelated container's Rancher Desktop/WSL port forwarding.
+      - "8010:8010"
+    volumes:
+      - reservations_data:/srv/app/data/reservations
+
   app:
     build:
       context: ..
@@ -32,12 +52,19 @@ services:
       QDRANT_PORT: 6333
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
+      MCP_HOST: mcp
+      MCP_PORT: 8010
     depends_on:
       - qdrant
       - postgres
+      - mcp
     ports:
       - "8000:8000"
+    volumes:
+      - checkpoint_data:/srv/app/data/state
 
 volumes:
   qdrant_data:
   postgres_data:
+  reservations_data:
+  checkpoint_data:

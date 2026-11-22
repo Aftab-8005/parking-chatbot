@@ -9,7 +9,7 @@ def test_get_vectorstore_builds_client_and_embeddings_with_settings(monkeypatch)
     fake_vectorstore = MagicMock()
 
     monkeypatch.setattr(retriever, "QdrantClient", MagicMock(return_value=fake_client))
-    monkeypatch.setattr(retriever, "OpenAIEmbeddings", MagicMock(return_value=fake_embeddings))
+    monkeypatch.setattr(retriever, "get_embeddings", MagicMock(return_value=fake_embeddings))
     monkeypatch.setattr(retriever, "QdrantVectorStore", MagicMock(return_value=fake_vectorstore))
 
     result = retriever.get_vectorstore()

@@ -34,6 +34,10 @@ htmlcov/
 qdrant_data/
 chroma_db/
 
+# Generated reservation output / checkpoint state (local runtime data)
+data/reservations/*.txt
+data/state/*.sqlite
+
 # Terraform
 terraform/.terraform/
 terraform/*.tfstate

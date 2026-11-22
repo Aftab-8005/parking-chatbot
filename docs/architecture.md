@@ -70,10 +70,34 @@ slot-filling survive across multiple HTTP requests.
 
 Numbers from the most recent run are in [`evaluation/REPORT.md`](../evaluation/REPORT.md).
 
-## What's deliberately out of scope for Stage 1
+## Stages 2-4: human-in-the-loop, MCP, and full orchestration
 
-- Human-in-the-loop admin approval (Stage 2) — reservations are stored with
-  `status="pending_admin_approval"` so Stage 2 can pick them up without a schema change.
-- MCP server / writing approved reservations to a file (Stage 3).
-- A single LangGraph that also orchestrates the admin and MCP steps (Stage 4) — Stage 1's graph
-  only covers the user-facing chatbot.
+The Stage 1 graph above was extended in place (same `app/graph/chatbot_graph.py`, same
+`StateGraph`) rather than bolting a second system on the side:
+
+```
+handle_reservation ──(complete)──► submit_to_admin ──► await_admin_decision ⏸interrupt()
+                                         │                        │
+                                 (double-booking check,   ┌────────┴─────────┐
+                                  creates Reservation +    ▼                  ▼
+                                  AdminRequest rows)  store_via_mcp     reject_notify
+                                                            │
+                                                  calls app/mcp/server.py's
+                                                  save_confirmed_reservation tool;
+                                                  on failure → approved_pending_storage
+```
+
+- **Stage 2 (human-in-the-loop)**: `submit_to_admin` creates a `Reservation` + `AdminRequest` row
+  (with a public `request_id`), then `await_admin_decision` calls LangGraph's `interrupt()` —
+  genuinely pausing the graph run. The graph is compiled with a `SqliteSaver` checkpointer
+  (`app/graph/checkpointer.py`) keyed by `thread_id = session_id`, so the pause survives separate
+  HTTP requests and process restarts. `app/api/admin_routes.py`'s
+  `POST /admin/requests/{id}/decision` persists the decision in Postgres and resumes the exact
+  paused thread with `Command(resume={"decision": ...})`.
+- **Stage 3 (MCP)**: `app/mcp/server.py` is a real MCP server (`mcp` SDK, streamable-HTTP
+  transport) exposing `save_confirmed_reservation`. `store_via_mcp` calls it through
+  `app/mcp/client.py`; on `McpUnavailableError` (timeout/connection failure) the reservation is
+  marked `approved_pending_storage` instead of crashing or silently dropping the approval.
+- **Stage 4 (orchestration)**: all of the above lives in one graph, so there is no separate
+  "orchestrator" the chatbot graph hands off to — intent routing, retrieval, reservation
+  collection, human approval, and MCP storage are nodes/edges of the same `StateGraph`.

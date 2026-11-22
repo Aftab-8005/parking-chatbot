@@ -6,13 +6,13 @@ from __future__ import annotations
 from pathlib import Path
 
 from langchain_core.documents import Document
-from langchain_openai import OpenAIEmbeddings
 from langchain_qdrant import QdrantVectorStore
 from langchain_text_splitters import MarkdownHeaderTextSplitter, RecursiveCharacterTextSplitter
 from qdrant_client import QdrantClient
 from qdrant_client.http.models import Distance, VectorParams
 
 from app.config import settings
+from app.rag.retriever import get_embeddings
 from app.security.guardrails import is_safe_for_vector_store
 
 KNOWLEDGE_DIR = Path(__file__).resolve().parents[2] / "data" / "knowledge"
@@ -70,10 +70,7 @@ def ingest() -> int:
         print("No safe documents to ingest.")
         return 0
 
-    embeddings = OpenAIEmbeddings(
-        model=settings.openai_embedding_model,
-        api_key=settings.openai_api_key,
-    )
+    embeddings = get_embeddings()
 
     client = get_qdrant_client()
     probe_vector = embeddings.embed_query("probe")

@@ -109,3 +109,55 @@ def is_safe_for_vector_store(text: str) -> bool:
     (emails, phone numbers, card/SSN-like numbers, or named individuals)
     before they are embedded into the vector database."""
     return not contains_pii(text)
+
+
+_PROMPT_INJECTION_PATTERNS = [
+    re.compile(pattern, re.IGNORECASE)
+    for pattern in (
+        r"ignore (all|any|the)? ?(previous|prior|above) instructions",
+        r"disregard (all|any|the)? ?(previous|prior|above)",
+        r"reveal (your|the) (system prompt|instructions|prompt)",
+        r"(show|print|output|what is) your (system prompt|instructions)",
+        r"you are now (a|an)",
+        r"act as (a|an) (?!parking)",
+        r"jailbreak",
+        r"developer mode",
+        r"dan mode",
+        r"forget (your|all) (rules|instructions)",
+        r"drop table",
+        r"--\s*or\s*1\s*=\s*1",
+        r"union select",
+        r"delete from",
+    )
+]
+
+_INTERNAL_DETAIL_KEYWORDS = ("api key", "api_key", "database password", "db password", "connection string")
+
+
+def detect_prompt_injection(text: str) -> bool:
+    """Heuristic guardrail: flag messages that look like an attempt to override
+    the system prompt, exfiltrate internal configuration, or inject SQL. This is
+    a practical, regex-based check -- not a guarantee against all adversarial
+    inputs -- applied to every user message before it reaches the graph."""
+    lowered = text.lower()
+    if any(pattern.search(lowered) for pattern in _PROMPT_INJECTION_PATTERNS):
+        return True
+    return any(keyword in lowered for keyword in _INTERNAL_DETAIL_KEYWORDS)
+
+
+def validate_user_message(text: str, max_length: int = 2000) -> tuple[bool, str | None]:
+    """Input guardrail applied to every incoming chat message.
+
+    Returns (is_valid, rejection_reason). Rejects empty/oversized input and
+    anything that looks like a prompt-injection or internal-detail probe.
+    """
+    if not text or not text.strip():
+        return False, "Please enter a message."
+    if len(text) > max_length:
+        return False, "That message is too long. Please shorten it and try again."
+    if detect_prompt_injection(text):
+        return False, (
+            "I can't help with that request. I can answer questions about parking hours, "
+            "prices, availability, location, or help you make a reservation."
+        )
+    return True, None

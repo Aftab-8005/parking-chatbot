@@ -1,6 +1,11 @@
+from datetime import datetime
+from unittest.mock import MagicMock
+
 from app.agents.reservation_agent import (
     ReservationSlots,
+    apply_extracted,
     apply_slot_value,
+    extract_and_merge,
     next_prompt,
     summarize,
 )
@@ -48,3 +53,22 @@ def test_slots_round_trip_to_and_from_dict():
     restored = ReservationSlots.from_dict(slots.to_dict())
     assert restored.is_complete()
     assert "Jane" in summarize(restored)
+
+
+def test_apply_extracted_fills_only_empty_slots_with_valid_values():
+    slots = ReservationSlots(first_name="Jane")
+    extracted = {"first_name": "Ignored", "last_name": "Doe", "car_number": "AB1234"}
+    updated = apply_extracted(slots, extracted)
+    assert updated.first_name == "Jane"
+    assert updated.last_name == "Doe"
+    assert updated.car_number == "AB1234"
+
+
+def test_extract_and_merge_falls_back_to_unchanged_slots_when_llm_unavailable():
+    slots = ReservationSlots(first_name="Jane")
+    llm = MagicMock()
+    llm.invoke.side_effect = RuntimeError("LLM unavailable")
+
+    result = extract_and_merge(slots, "car ABC123", datetime(2026, 11, 22, 9, 0), llm=llm)
+    assert result.first_name == "Jane"
+    assert result.car_number is None
